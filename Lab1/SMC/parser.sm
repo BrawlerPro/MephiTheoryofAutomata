@@ -1,0 +1,82 @@
+%class Parser
+%package parser
+
+%start StateMap::start
+%map StateMap
+
+%%
+
+Default {
+  next unexpected {}
+}
+
+unexpected {
+    next   start { unacceptable(); }
+}
+
+start {
+    next [ ctxt.match("create") ] space_after_create  { consume(5); }
+}
+
+end {
+    next [ ctxt.is_valid() ] start { acceptable(); }
+}
+
+space_after_create {
+    next [ ctxt.peek() == ' ' ] relation_name_state { consume_whitespace(); token_start(); }
+    next                     unexpected {}
+}
+
+relation_name_state {
+    next [ ctxt.peek().isalnum() or ctxt.peek() == '_' or ctxt.peek() == '.' ] relation_name_state { consume(); }
+    next [ ctxt.peek() == " " ] choice_after_relation { consume_whitespace(); }
+    next [ ctxt.match('(') ] open_paren_state { set_relation(); consume(1); }
+    next                     unexpected {}
+}
+
+choice_after_relation {
+    next [ ctxt.match('(') ] open_paren_state { set_relation(); consume(1); consume_whitespace(); }
+    next [ ctxt.match("as") ] relation_name1_state { set_relation(); consume(1); consume_whitespace(); token_start(); }
+    next                     unexpected {}
+}
+
+open_paren_state {
+    next [ ctxt.peek().isalnum() or ctxt.peek() == '_' or ctxt.peek() == '.' ] attr_name_state { token_start(); consume(); }
+    next                     unexpected {}
+}
+
+attr_name_state {
+    next [ ctxt.peek().isalnum() or ctxt.peek() == '_' or ctxt.peek() == '.' ] attr_name_state { consume(); }
+    next [ ctxt.peek() == ' ' ] choice_after_attr { consume_whitespace(); }
+    next [ ctxt.match(',') ] open_paren_state { add_attribute(); consume(); consume_whitespace();}
+    next [ ctxt.match(')') ] close_paren_state { add_attribute(); consume();}
+    next                     unexpected {}
+}
+
+choice_after_attr {
+    next [ ctxt.match(',') ] open_paren_state { add_attribute(); consume(); consume_whitespace();}
+    next [ ctxt.match(')') ] close_paren_state { add_attribute(); consume(); consume_whitespace();}
+    next                     unexpected {}
+}
+
+close_paren_state {
+    next                     end { register_relation(); }
+}
+
+relation_name1_state {
+    next [ ctxt.peek().isalnum() or ctxt.peek() == '_' or ctxt.peek() == '.' ] relation_name1_state { consume(); }
+    next [ ctxt.peek() == ' ' ] choice_after_relation1 { consume_whitespace(); }
+    next                     unexpected {}
+}
+
+choice_after_relation1 {
+    next [ ctxt.match('join') ] relation_name2_state { set_relation1(); consume(3); consume_whitespace(); token_start(); }
+    next                     unexpected {}
+}
+
+relation_name2_state {
+    next [ ctxt.peek().isalnum() or ctxt.peek() == '_' or ctxt.peek() == '.' ] relation_name2_state { consume(); }
+    next [ ctxt.peek() == '\n' ] end { set_relation2(); merge_relations(); }
+}
+%%
+
