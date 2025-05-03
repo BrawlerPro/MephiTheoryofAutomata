@@ -1,57 +1,55 @@
 import re
-from typing import List
 from RegexToken import *
+from typing import Iterator
 
 
 class RegexLexer:
     def __init__(self, input_string: str):
-        self.input = input_string
-        self.pos = 0
-        self.length = len(input_string)
+        self.input = input_string            # исходная строка
+        self.pos = 0                         # текущая позиция в строке
+        self.length = len(input_string)      # длина строки
 
     def next_char(self):
         if self.pos >= self.length:
-            return ''
-        return self.input[self.pos]
+            return ''                        # если позиция вышла за пределы — возвращаем пустую строку
+        return self.input[self.pos]          # иначе возвращаем текущий символ
 
     def advance(self):
-        self.pos += 1
+        self.pos += 1                        # двигаем позицию вперёд
 
     def match(self, s: str) -> bool:
-        return self.input.startswith(s, self.pos)
+        return self.input.startswith(s, self.pos)  # проверка, начинается ли подстрока с позиции на `s`
 
-    def lex(self) -> List[Token]:
-        tokens: List[Token] = []
-
+    def lex(self) -> Iterator[Token]:        # генератор токенов
         while self.pos < self.length:
-            c = self.next_char()
+            c = self.next_char()            # текущий символ
 
-            # Экранированные метасимволы: %s%
+            # Экранированные символы вида %s%
             if c == '%' and self.pos + 2 < self.length and self.input[self.pos + 2] == '%':
-                esc_char = self.input[self.pos + 1]
-                tokens.append(Token(TokenType.CHAR, esc_char))
-                self.pos += 3
+                esc_char = self.input[self.pos + 1]                 # получаем экранируемый символ
+                yield Token(TokenType.CHAR, esc_char)               # возвращаем как обычный символ
+                self.pos += 3                                       # пропускаем %s%
                 continue
 
-            # Альтернатива
+            # Альтернатива: |
             if c == '|':
-                tokens.append(Token(TokenType.OR))
+                yield Token(TokenType.OR)       # возвращаем токен ИЛИ
                 self.advance()
                 continue
 
-            # Клини (…)
+            # Клини (… — многоточие в виде одного символа)
             if self.match('…'):
-                tokens.append(Token(TokenType.KLEENE))
-                self.pos += 1  # только один символ
+                yield Token(TokenType.KLEENE)   # звезда Клини
+                self.pos += 1                   # здесь у тебя один символ '…', а не три точки
                 continue
 
-            # Опциональная часть
+            # Опциональный символ: ?
             if c == '?':
-                tokens.append(Token(TokenType.OPTIONAL))
+                yield Token(TokenType.OPTIONAL)
                 self.advance()
                 continue
 
-            # Повтор {x}
+            # Повтор: {n}
             if c == '{':
                 end = self.input.find('}', self.pos)
                 if end == -1:
@@ -59,11 +57,11 @@ class RegexLexer:
                 repeat_count = self.input[self.pos + 1:end]
                 if not repeat_count.isdigit():
                     raise ValueError(f"Invalid repeat count: {repeat_count}")
-                tokens.append(Token(TokenType.REPEAT, int(repeat_count)))
+                yield Token(TokenType.REPEAT, int(repeat_count))  # возвращаем повтор с числом
                 self.pos = end + 1
                 continue
 
-            # Группа с именем (<name>
+            # Начало именованной группы: (<name>
             if self.match('(<'):
                 name_end = self.input.find('>', self.pos + 2)
                 if name_end == -1:
@@ -71,34 +69,35 @@ class RegexLexer:
                 group_name = self.input[self.pos + 2:name_end]
                 if not re.fullmatch(r'\w+', group_name):
                     raise ValueError(f"Invalid group name: {group_name}")
-                tokens.append(Token(TokenType.NAMED_GROUP_START, group_name))
+                yield Token(TokenType.NAMED_GROUP_START, group_name)  # старт именованной группы
                 self.pos = name_end + 1
                 continue
 
-            # Использование именованной группы <name>
+            # Ссылка на группу: <name>
             if c == '<':
                 name_end = self.input.find('>', self.pos)
                 if name_end == -1:
                     raise ValueError("Unclosed named reference <name>")
                 group_name = self.input[self.pos + 1:name_end]
-                tokens.append(Token(TokenType.NAMED_REF, group_name))
+                yield Token(TokenType.NAMED_REF, group_name)          # ссылка на именованную группу
                 self.pos = name_end + 1
                 continue
 
-            # Обычные скобки
+            # Левая скобка
             if c == '(':
-                tokens.append(Token(TokenType.LPAREN))
+                yield Token(TokenType.LPAREN)
                 self.advance()
                 continue
 
+            # Правая скобка
             if c == ')':
-                tokens.append(Token(TokenType.RPAREN))
+                yield Token(TokenType.RPAREN)
                 self.advance()
                 continue
 
-            # Все остальное — обычный символ
-            tokens.append(Token(TokenType.CHAR, c))
+            # Всё остальное — обычный символ
+            yield Token(TokenType.CHAR, c)
             self.advance()
 
-        tokens.append(Token(TokenType.EOF))
-        return tokens
+        # Завершающий токен
+        yield Token(TokenType.EOF)
