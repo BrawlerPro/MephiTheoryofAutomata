@@ -4,17 +4,36 @@ import graphviz
 from collections import deque
 
 
+class MatchResult:
+    def __init__(self, start, end, full_match, groups):
+        self.start = start  # Начальная позиция совпадения
+        self.end = end  # Конечная позиция совпадения
+        self.full_match = full_match  # Совпавшая подстрока
+        self.groups = groups  # Словарь именованных групп
+
+    def __getitem__(self, key):
+        return self.groups.get(key, None)  # Позволяет доступ к группам по имени через []
+
+    def __iter__(self):
+        return iter(self.groups.items())  # Позволяет итерироваться по группам
+
+    def __str__(self):
+        return f"Result(start: {self.start}, end: {self.end}, fill_match: {self.full_match}, groups: {self.groups})"
+
+
+
+
 # Класс состояния автомата
 class State:
-    _id_counter = 0  # Глобальный счётчик состояний для уникальных имён
+    _id_counter = 0
 
     def __init__(self, is_end=False):
         self.name = f"S{State._id_counter}"
         State._id_counter += 1
 
         self.transitions: Dict[str, list[State]] = {}  # Переходы по символам
-        self.epsilon: list[State] = []                # Epsilon-переходы
-        self.is_end = is_end                          # Является ли состояние финальным
+        self.epsilon: list[State] = []  # Epsilon-переходы
+        self.is_end = is_end  # Является ли состояние финальным
 
     def add_transition(self, symbol, state):
         if symbol == 'ε':
@@ -175,7 +194,7 @@ def draw_nfa(nfa: NFA, filename="nfa"):
 
 
 # Симуляция выполнения НКА с поддержкой захвата и сравнения именованных групп
-def match_nfa(nfa: NFA, input_str: str) -> bool:
+def match_nfa(nfa: NFA, input_str: str):
     queue = deque()
     visited = set()
     queue.append((nfa.start, 0, {}, {}))  # состояние, позиция, захваты, стартовые позиции групп
@@ -188,8 +207,9 @@ def match_nfa(nfa: NFA, input_str: str) -> bool:
             continue
         visited.add(key)
 
-        if state.is_end and pos == len(input_str):
-            return True
+        if state.is_end:
+            matched = input_str[:pos]
+            return MatchResult(full_match=matched, start=0, end=pos, groups=captures) if matched else None  # <--- Возвращаем нужные значения
 
         # Epsilon-переходы
         for next_state in state.epsilon:
@@ -225,4 +245,16 @@ def match_nfa(nfa: NFA, input_str: str) -> bool:
                 elif pos < len(input_str) and input_str[pos] == symbol:
                     queue.append((next_state, pos + 1, captures.copy(), group_starts.copy()))
 
-    return False
+    return None  # <--- Возврат None, если совпадения нет
+
+
+def search_nfa(nfa, string):
+    """
+    Поиск первого вхождения подстроки, соответствующей регулярному выражению.
+    Возвращает MatchResult при успехе или None.
+    """
+    for start_pos in range(len(string)):  # Проходим по всем возможным позициям начала строки
+        result = match_nfa(nfa, string[start_pos:])  # Пытаемся найти совпадение с текущей позиции
+        if result is not None:  # Если найдено совпадение
+            return MatchResult(start_pos, start_pos + result.end, result.full_match, result.groups)  # Возвращаем объект совпадения
+    return None  # Если ничего не найдено – возвращаем None

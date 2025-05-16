@@ -57,6 +57,7 @@ class RegexParser:
 
     def parse_concat(self) -> RegexNode:
         nodes = []
+
         while True:
             if self.current().type in (
                 TokenType.CHAR, TokenType.LPAREN,

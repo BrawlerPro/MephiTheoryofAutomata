@@ -13,6 +13,7 @@ class TokenType(Enum):
     NAMED_GROUP_START = 'NAMED_GROUP_START'
     NAMED_GROUP_END = 'NAMED_GROUP_END'
     NAMED_REF = 'NAMED_REF'
+    EMPTY = "EMPTY"
     EOF = 'EOF'
 
 

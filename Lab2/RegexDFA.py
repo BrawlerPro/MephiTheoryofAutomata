@@ -1,6 +1,22 @@
 from collections import deque
-
 import graphviz
+
+
+class MatchResult:
+    def __init__(self, start, end, full_match, groups):
+        self.start = start  # Начальная позиция совпадения
+        self.end = end  # Конечная позиция совпадения
+        self.full_match = full_match  # Совпавшая подстрока
+        self.groups = groups  # Словарь именованных групп
+
+    def __getitem__(self, key):
+        return self.groups.get(key, None)  # Позволяет доступ к группам по имени через []
+
+    def __iter__(self):
+        return iter(self.groups.items())  # Позволяет итерироваться по группам
+
+    def __str__(self):
+        return f"Result(start: {self.start}, end: {self.end}, fill_match: {self.full_match}, groups: {self.groups})"
 
 
 class DFAState:
@@ -22,12 +38,14 @@ class DFAState:
         self.groups = {}
 
 
+# Класс для ДКА
 class DFA:
     """
     Класс DFA — детерминированного конечного автомата.
     Содержит:
     - start: стартовое состояние
     - states: список всех состояний автомата
+    - finals: множество завершающих состояний
     """
 
     def __init__(self):
@@ -58,7 +76,7 @@ def move(states, symbol):
     for state in states:
         if symbol in state.transitions:
             result.update(state.transitions[symbol])
-    return result
+    return result  # Возвращаем множество целевых состояний
 
 
 def nfa_to_dfa(nfa):
@@ -66,13 +84,13 @@ def nfa_to_dfa(nfa):
     Алгоритм преобразования NFA в DFA по методу подмножеств (subset construction).
     Для каждого множества состояний NFA создаётся уникальное состояние DFA.
     """
-    dfa = DFA()
-    state_map = {}
-    queue = deque()
+    dfa = DFA()  # Создаем новый ДКА
+    state_map = {}  # Словарь для отображения множества состояний NFA в состояние DFA
+    queue = deque()  # Очередь для обработки состояний
 
     start_nfa_states = epsilon_closure({nfa.start})
     start_frozen = frozenset(start_nfa_states)
-    start_dfa = DFAState(name="q0", nfa_states=start_frozen)
+    start_dfa = DFAState(name="q0", nfa_states=start_frozen)  # Создаем стартовое состояние DFA
 
     dfa.start = start_dfa
     dfa.states.append(start_dfa)
@@ -83,22 +101,22 @@ def nfa_to_dfa(nfa):
     while queue:
         current = queue.popleft()
         symbols = set()
-        for s in current.nfa_states:
-            symbols.update(s.transitions.keys())
+        for s in current.nfa_states:  # Для каждого состояния из множества состояний NFA
+            symbols.update(s.transitions.keys())  # Собираем все возможные символы переходов
 
         for symbol in symbols:
             moved = move(current.nfa_states, symbol)
             closure = epsilon_closure(moved)
             closure_frozen = frozenset(closure)
 
-            if closure_frozen not in state_map:
+            if closure_frozen not in state_map:  # Если такого состояния ещё нет
                 new_state = DFAState(f"q{state_counter}", closure_frozen)
                 state_counter += 1
                 state_map[closure_frozen] = new_state
                 dfa.states.append(new_state)
                 queue.append(new_state)
 
-            current.transitions[symbol] = state_map[closure_frozen]
+            current.transitions[symbol] = state_map[closure_frozen]  # Добавляем переход в DFA
 
     return dfa
 
@@ -114,33 +132,38 @@ def minimize_dfa(dfa):
 
     final_states = {s for s in dfa.states if s.is_end}
     non_final_states = set(dfa.states) - final_states
-    partitions = [final_states, non_final_states] if non_final_states else [final_states]
-    state_to_partition = {s: i for i, group in enumerate(partitions) for s in group}
+    partitions = [final_states, non_final_states] if non_final_states else [
+        final_states]
+    state_to_partition = {s: i for i, group in enumerate(partitions) for s in
+                          group}
 
     changed = True
     while changed:
-        changed = False
+        changed = False  # Сбрасываем флаг изменения
         new_partitions = []
         for group in partitions:
-            splits = {}
+            splits = {}  # Словарь для разделённых групп
             for state in group:
-                sig = tuple(state_to_partition.get(state.transitions.get(sym), -1) for sym in sorted(alphabet))
-                splits.setdefault(sig, set()).add(state)
+                sig = tuple(state_to_partition.get(state.transitions.get(sym), -1) for sym in
+                            sorted(alphabet))  # Ключ для разделения
+                splits.setdefault(sig, set()).add(state)  # Разделяем состояния по ключу
             if len(splits) > 1:
-                changed = True
+                changed = True  # Если разделили на больше чем одну группу, устанавливаем флаг изменения
             new_partitions.extend(splits.values())
         partitions = new_partitions
-        state_to_partition = {s: i for i, group in enumerate(partitions) for s in group}
+        state_to_partition = {s: i for i, group in enumerate(partitions) for s in
+                              group}
 
     group_to_state = {}
     min_dfa = DFA()
     for i, group in enumerate(partitions):
-        rep = next(iter(group))
-        new_state = DFAState(f"mq{i}", rep.nfa_states)
-        new_state.is_end = rep.is_end
+        rep = next(iter(group))  # Представитель группы
+        new_state = DFAState(f"mq{i}", rep.nfa_states)  # Создаём новое состояние для группы
+        new_state.is_end = rep.is_end  # Устанавливаем флаг окончания для нового состояния
         group_to_state[i] = new_state
         min_dfa.states.append(new_state)
 
+    # Применяем переходы для минимизированного DFA
     for i, group in enumerate(partitions):
         rep = next(iter(group))
         current = group_to_state[i]
@@ -155,29 +178,14 @@ def minimize_dfa(dfa):
     return min_dfa
 
 
-def match_dfa(dfa, string):
-    """Проверка, принимает ли DFA строку целиком."""
-    current = dfa.start
-    for c in string:
-        if c not in current.transitions:
-            return False
-        current = current.transitions[c]
-    return current.is_end
-
-
-def match_min_dfa(min_dfa, string):
-    """Аналогично match_dfa, но для минимизированного DFA."""
-    return match_dfa(min_dfa, string)
-
-
-def make_dfa_total(dfa):
+def make_dfa_total(dfa, alphabet=None):
     """
-    Делает DFA полным, добавляя ловушечное (trap) состояние,
-    в которое ведут отсутствующие переходы.
+    Делает DFA полным, добавляя ловушечное состояние для всех отсутствующих переходов.
     """
-    alphabet = set()
-    for state in dfa.states:
-        alphabet.update(state.transitions.keys())
+    if alphabet is None:
+        alphabet = set()
+        for state in dfa.states:
+            alphabet.update(state.transitions.keys())
 
     trap_state = DFAState(name="TRAP", nfa_states=frozenset())
     trap_state.is_end = False
@@ -197,10 +205,11 @@ def make_dfa_total(dfa):
 
 def complement_dfa(dfa):
     """
-    Возвращает дополнение языка DFA (всё, что не принимается исходным DFA).
-    Предварительно делает DFA полным.
+    Возвращает дополнение DFA. Всё, что не принимается исходным DFA.
     """
-    dfa = make_dfa_total(dfa)
+    # Можно расширить алфавит вручную — например, a-z
+    alphabet = set(chr(c) for c in range(32, 127))  # Печатаемые ASCII символы
+    dfa = make_dfa_total(dfa, alphabet)
     for state in dfa.states:
         state.is_end = not state.is_end
     return dfa
@@ -212,22 +221,24 @@ def intersect_dfa(dfa1, dfa2):
     Принимающее состояние — только если оба состояния-пересечения являются принимающими.
     """
 
+    # Получаем алфавит для каждого DFA
     def get_alphabet(dfa):
-        alphab = set()
+        alphas = set()  # Множество символов
         for state in dfa.states:
-            alphab.update(state.transitions.keys())
-        return alphab
+            alphas.update(state.transitions.keys())  # Собираем символы переходов
+        return alphas
 
-    alphabet = get_alphabet(dfa1) & get_alphabet(dfa2)
+    alphabet = get_alphabet(dfa1) & get_alphabet(dfa2)  # Пересекаем алфавиты двух DFA
     visited = {}
-    queue = deque()
+    queue = deque()  # Очередь для обработки состояний
 
     def make_key(sq1, sq2):
-        return sq1.name, sq2.name
+        return sq1.name, sq2.name  # Создаем уникальный ключ для пары состояний
 
-    start_key = make_key(dfa1.start, dfa2.start)
-    start_state = DFAState(name=str(start_key), nfa_states=frozenset())
-    start_state.is_end = dfa1.start.is_end and dfa2.start.is_end
+    start_key = make_key(dfa1.start, dfa2.start)  # Создаем ключ для стартовых состояний
+    start_state = DFAState(name=str(start_key), nfa_states=frozenset())  # Создаём стартовое состояние для пересечения
+    start_state.is_end = dfa1.start.is_end and dfa2.start.is_end  # Состояние пересечения — финальное, если оба
+    # исходных финальны
 
     visited[start_key] = start_state
     queue.append((dfa1.start, dfa2.start))
@@ -243,62 +254,121 @@ def intersect_dfa(dfa1, dfa2):
         for symbol in alphabet:
             t1 = s1.transitions.get(symbol)
             t2 = s2.transitions.get(symbol)
+
             if t1 and t2:
-                next_key = make_key(t1, t2)
+                next_key = make_key(t1, t2)  # Создаём ключ для пары новых состояний
                 if next_key not in visited:
                     new_state = DFAState(name=str(next_key), nfa_states=frozenset())
                     new_state.is_end = t1.is_end and t2.is_end
                     visited[next_key] = new_state
-                    queue.append((t1, t2))
                     new_dfa.states.append(new_state)
+                    queue.append((t1, t2))
                 current.transitions[symbol] = visited[next_key]
 
     return new_dfa
 
 
 def dfa_to_regex(dfa):
-    """
-    Метод K-пути (алгоритм Брзо́вского — алгоритм Клина) для преобразования DFA в регулярное выражение.
-    Создаёт матрицу R[k][i][j] — выражение от состояния i к j с промежуточными ≤ k.
-    """
+    def wrap_if_needed(expr):
+        """Оборачивает выражение в скобки, если это нужно"""
+        if '|' in expr or '…' in expr or '?' in expr:
+            return f"({expr})"
+        return expr
+
+    def simplify(expr):
+        """Упрощает регулярные выражения"""
+        if expr == "∅":
+            return None
+        if expr == "ε":
+            return ""
+        return expr
+
+    def clean_alt(parts):
+        """Удаляет дубликаты и ∅ в объединениях"""
+        parts = [p for p in parts if p not in (None, "∅")]
+        return list(dict.fromkeys(parts))  # сохранить порядок и уникальность
+
+    # Преобразуем DFA в список состояний с номерами
     state_list = list(dfa.states)
     state_ids = {state: i for i, state in enumerate(state_list)}
     n = len(state_list)
-    R = [[["∅" for _ in range(n)] for _ in range(n)] for _ in range(n + 1)]
 
+    # Инициализация r[0]
+    r = [[["∅" for _ in range(n)] for _ in range(n)] for _ in range(n + 1)]
     for i, state in enumerate(state_list):
         for symbol, next_state in state.transitions.items():
             j = state_ids[next_state]
-            R[0][i][j] = symbol if R[0][i][j] == "∅" else f"{R[0][i][j]}|{symbol}"
-        if R[0][i][i] == "∅":
-            R[0][i][i] = "ε"
+            symbol = f"%{symbol}%" if symbol in {'(', ')', '|', '?', '…', '{', '}', '<', '>'} else symbol
+            r[0][i][j] = symbol if r[0][i][j] == "∅" else f"{r[0][i][j]}|{symbol}"
+        if r[0][i][i] == "∅":
+            r[0][i][i] = "ε"
 
+    # Основной цикл Брзо́вского
     for k in range(1, n + 1):
         for i in range(n):
             for j in range(n):
-                rik, rkk, rkj = R[k - 1][i][k - 1], R[k - 1][k - 1][k - 1], R[k - 1][k - 1][j]
-                rij = R[k - 1][i][j]
-                part1 = f"{rik}({rkk})…{rkj}" if rik != "∅" and rkj != "∅" else "∅"
-                R[k][i][j] = part1 if rij == "∅" else (rij if part1 == "∅" else f"{rij}|{part1}")
+                rij = simplify(r[k - 1][i][j])
+                rik = simplify(r[k - 1][i][k - 1])
+                rkk = simplify(r[k - 1][k - 1][k - 1])
+                rkj = simplify(r[k - 1][k - 1][j])
 
+                loop = f"{wrap_if_needed(rkk)}…" if rkk else None
+                bridge = None
+                if rik and rkj:
+                    middle = loop if loop else ""
+                    bridge = f"{wrap_if_needed(rik)}{middle}{wrap_if_needed(rkj)}"
+
+                if rij and bridge:
+                    r[k][i][j] = f"{rij}|{bridge}"
+                elif rij:
+                    r[k][i][j] = rij
+                elif bridge:
+                    r[k][i][j] = bridge
+                else:
+                    r[k][i][j] = "∅"
+
+    # Формируем итоговое выражение
     start = state_ids[dfa.start]
     finals = [state_ids[s] for s in dfa.states if s.is_end]
-    expressions = [R[n][start][f] for f in finals if R[n][start][f] != "∅"]
-    return "∅" if not expressions else (expressions[0] if len(expressions) == 1 else "|".join(expressions))
+    expressions = [simplify(r[n][start][f]) for f in finals]
+    expressions = clean_alt(expressions)
+
+    if not expressions:
+        return "∅"
+    if len(expressions) == 1:
+        return expressions[0]
+    return "|".join(f"{wrap_if_needed(e)}" for e in expressions if e)
 
 
-def search_dfa(dfa: DFA, text: str) -> bool:
-    """Ищет неполное совпадение: возвращает True, если подстрока текста распознаётся DFA."""
-    for i in range(len(text)):
-        current = dfa.start
-        for j in range(i, len(text)):
-            c = text[j]
-            if c not in current.transitions:
-                break
-            current = current.transitions[c]
-            if current.is_end:
-                return True
-    return False
+# Функция для сопоставления строки с DFA
+def match_dfa(dfa, string) -> MatchResult or None:
+    """
+    Проверяет, принимает ли минимизированный DFA строку полностью.
+    Возвращает MatchResult, если полное совпадение; иначе None.
+    """
+    state = dfa.start
+    for i, char in enumerate(string):
+        if char in state.transitions:
+            state = state.transitions[char]
+        else:
+            return None  # Недопустимый переход — не принадлежит языку
+
+    if state.is_end:
+        return MatchResult(0, len(string), string, {})  # Совпадение на всю строку
+    return None
+
+
+def match_min_dfa(min_dfa, string):
+    return match_dfa(min_dfa, string)
+
+
+def search_dfa(dfa, string: str):
+    for start_pos in range(len(string)):
+        sub_str = string[start_pos:]
+        result = match_dfa(dfa, sub_str)
+        if result:
+            return MatchResult(start_pos, start_pos + result.end, result.full_match, result.groups)
+    return None
 
 
 def draw_dfa(dfa, filename="dfa"):
