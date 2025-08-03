@@ -1,0 +1,16 @@
+INT N := 12
+INT S := 0
+
+PROC sum n res (
+    IF LT(n,1) (
+        res := 0
+    ) ELSE (
+        INT m := n - 1
+        INT tmp := 0
+        sum(m, tmp)
+        res := tmp + n
+    )
+)
+
+sum(N, S)
+PRINT(S)

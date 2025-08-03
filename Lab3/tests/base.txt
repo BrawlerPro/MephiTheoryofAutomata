@@ -1,0 +1,10 @@
+// Поворачиваем на EAST, смотрим вперёд и шагаем на столько, сколько свободно
+RIGHT
+
+INT
+INT dist := LOOK
+
+WHILE GT(dist, 0) DO (
+    STEP
+    dist := dist - 1
+)

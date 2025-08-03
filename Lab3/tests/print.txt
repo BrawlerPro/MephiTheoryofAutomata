@@ -1,0 +1,19 @@
+// Пример: выводим текущую позицию и результат LOOK
+
+INT steps := 3
+BOOLEAN ok := TRUE
+
+PRINT steps        // выведет "3"
+PRINT ok           // выведет "True"
+
+RIGHT
+PRINT LOOK         // сколько свободных клеток перед роботом
+
+WHILE GT steps 0 DO (
+    STEP EAST
+    PRINT steps    // покажет старое значение
+    DEC steps 1
+    PRINT steps    // покажет на единицу меньше
+)
+
+PRINT LOOK         // результат после цикла
